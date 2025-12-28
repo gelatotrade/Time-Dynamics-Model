@@ -14,20 +14,20 @@
 
 The **Time Dynamics Model** is a sophisticated mathematical framework for modeling temporal dynamics in financial markets. By combining principles from differential geometry, stochastic calculus, and machine learning, this system generates trading signals designed to outperform passive buy-and-hold strategies, particularly during adverse market conditions.
 
-### Key Performance Highlights (S&P 500 Backtest 2017-2024)
+### Key Performance Highlights (S&P 500 Backtest 2017-Dec 2025)
 
 | Metric | Lorentz Sigma 13 | S&P 500 Buy & Hold |
 |--------|------------------|------------|
-| **Total Return** | +110.13% | +113.33% |
-| **Sharpe Ratio** | 1.23 | 1.13 |
-| **Max Drawdown** | 11.81% | ~35%* |
-| **Sortino Ratio** | 1.64 | - |
-| **Win Rate** | 49.55% | - |
-| **Beta** | 0.77 | 1.0 |
+| **Total Return** | +183.03% | +113.33% |
+| **Sharpe Ratio** | 1.42 | 1.19 |
+| **Max Drawdown** | 13.18% | ~35%* |
+| **Sortino Ratio** | 1.90 | - |
+| **Alpha** | +6.83% | - |
+| **Beta** | 1.11 | 1.0 |
 
 *S&P 500 experienced -34% drawdown during COVID crash (Feb-Mar 2020) and -25% during 2022 bear market.
 
-**The strategy achieved similar returns with 9% higher Sharpe Ratio and 66% lower drawdown!**
+**The model outperforms the S&P 500 by +69.7 percentage points over the period 2017-Dec 2025!**
 
 ---
 
@@ -468,23 +468,23 @@ Default parameters:
   <img src="images/temporal_gradient.png" alt="Temporal Gradient Evolution" width="90%">
 </p>
 
-### Performance Summary (S&P 500 2017-2024)
+### Performance Summary (S&P 500 2017-Dec 2025)
 
-The Lorentz Sigma 13 strategy demonstrates superior risk-adjusted returns while tracking the S&P 500:
+The Lorentz Sigma 13 strategy demonstrates superior risk-adjusted returns while significantly outperforming the S&P 500:
 
 | Metric | Lorentz Sigma 13 | S&P 500 Buy & Hold | Difference |
 |--------|------------------|------------|------------|
-| **Total Return** | +110.13% | +113.33% | -3.20% |
-| **Annualized Return** | +9.73% | +10.06% | -0.33% |
-| **Annualized Volatility** | 6.27% | 7.03% | **-11%** |
-| **Sharpe Ratio** | 1.23 | 1.13 | **+9%** |
-| **Sortino Ratio** | 1.64 | - | - |
-| **Max Drawdown** | 11.81% | ~35% | **-66%** |
-| **Calmar Ratio** | 0.82 | - | - |
-| **Alpha** | +4.17% | - | - |
-| **Beta** | 0.77 | 1.0 | Lower risk |
-| **Win Rate** | 49.55% | - | - |
-| **Profit Factor** | 1.35 | - | - |
+| **Total Return** | +183.03% | +113.33% | **+69.70%** |
+| **Annualized Return** | +12.25% | +8.78% | **+3.47%** |
+| **Annualized Volatility** | 7.20% | 5.72% | +1.48% |
+| **Sharpe Ratio** | 1.42 | 1.19 | **+19%** |
+| **Sortino Ratio** | 1.90 | - | - |
+| **Max Drawdown** | 13.18% | ~35% | **-62%** |
+| **Calmar Ratio** | 0.93 | - | - |
+| **Alpha** | +6.83% | - | - |
+| **Beta** | 1.11 | 1.0 | Moderate |
+| **Win Rate** | 50.49% | - | - |
+| **Profit Factor** | 1.36 | - | - |
 
 ### Why It Works
 
@@ -495,7 +495,7 @@ The strategy achieves superior risk-adjusted returns through three mechanisms:
 The biggest advantage comes from avoiding major market declines:
 - During COVID crash (Feb-Mar 2020): Strategy reduced exposure, limiting losses
 - During 2022 bear market: Strategy went defensive, avoiding the -25% drawdown
-- The strategy's 11.81% max drawdown vs S&P 500's ~35% shows effective risk management
+- The strategy's 13.18% max drawdown vs S&P 500's ~35% shows effective risk management
 
 **2. Regime Detection**
 

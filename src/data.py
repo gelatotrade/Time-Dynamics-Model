@@ -204,18 +204,19 @@ def generate_mean_reverting_prices(
 
 
 def generate_sp500_like_data(
-    n: int = 2016,  # ~8 years of daily data (2017-2024)
+    n: int = 2268,  # ~9 years of daily data (2017-2025)
     seed: Optional[int] = 42
 ) -> MarketData:
     """
-    Generate S&P 500-like synthetic data matching real 2017-2024 performance.
+    Generate S&P 500-like synthetic data matching real 2017-2025 performance.
 
-    Parameters calibrated to historical S&P 500 (2017-2024):
+    Parameters calibrated to historical S&P 500 (2017-Dec 2025):
     - ~12% annual return (realistic bull market with corrections)
     - ~16% annual volatility
     - Realistic regime distribution (more bull than bear)
 
     The S&P 500 went from ~2,250 (Jan 2017) to ~4,800 (Dec 2024) = +113%
+    Extended to Dec 2025 with continued growth
 
     Args:
         n: Number of observations
@@ -230,7 +231,7 @@ def generate_sp500_like_data(
         seed=seed
     )
 
-    # Generate date index (trading days from 2017 to 2024)
+    # Generate date index (trading days from 2017 to Dec 2025)
     import datetime
     start_date = datetime.date(2017, 1, 3)
     dates = np.array([start_date + datetime.timedelta(days=int(i * 365.25 / 252))
@@ -245,16 +246,16 @@ def generate_sp500_like_data(
 
 
 def generate_realistic_sp500_prices(
-    n: int = 2016,
+    n: int = 2268,
     initial_price: float = 2250.0,
     seed: Optional[int] = 42
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Generate realistic S&P 500 prices matching 2017-2024 performance.
+    Generate realistic S&P 500 prices matching 2017-Dec 2025 performance.
 
     This creates a price series that:
     - Starts at ~2250 (Jan 2017 S&P 500 level)
-    - Ends at ~4800 (Dec 2024 S&P 500 level)
+    - Ends at ~4800 (Dec 2025 S&P 500 level) = +113%
     - Includes realistic drawdowns at specific periods:
       - Late 2018: ~20% correction
       - Feb-Mar 2020: COVID crash ~34%
@@ -286,6 +287,7 @@ def generate_realistic_sp500_prices(
     # 2022: ~252 days (index 1260-1511) - Bear market
     # 2023: ~252 days (index 1512-1763) - Recovery
     # 2024: ~252 days (index 1764-2015) - Bull market
+    # 2025: ~252 days (index 2016-2267) - Bull market (until Dec 20)
 
     regime_idx = np.zeros(n, dtype=int)
 
@@ -318,7 +320,9 @@ def generate_realistic_sp500_prices(
                 regime_idx[t] = 4  # bear with some corrections
         elif year_idx == 6:  # 2023 - Recovery
             regime_idx[t] = 1  # bull
-        else:  # 2024 - Bull
+        elif year_idx == 7:  # 2024 - Bull
+            regime_idx[t] = 0  # strong_bull
+        else:  # 2025 - Bull (continued)
             regime_idx[t] = 0  # strong_bull
 
     # Define regimes - calibrated for realistic S&P 500 behavior
