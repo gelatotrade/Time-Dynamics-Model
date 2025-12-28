@@ -7,23 +7,41 @@ Provides a rigorous backtesting framework with:
 - Position sizing optimization
 - Transaction cost modeling
 - Performance analytics
+- Lorentzian Classification strategy integration
 
 Critical Design Principle:
 --------------------------
 All signals are generated using information available BEFORE the trading period.
 Signal[t] uses only data up to time t-1, then traded at close of t-1 for return at t.
+
+Lorentz Sigma 13 Integration:
+-----------------------------
+This module includes the Lorentzian Classification strategy which uses:
+- Lorentzian distance metric for robust pattern matching
+- K=13 nearest neighbors for classification
+- Kernel smoothing with sigma=13
+- Dynamic position sizing based on prediction confidence
 """
 
 import numpy as np
-from typing import Optional, Tuple, Dict, List, Callable
+from typing import Optional, Tuple, Dict, List, Callable, Union
 from dataclasses import dataclass, field
 from enum import Enum
 try:
     from .model import TimeDynamicsModel, ModelParameters
     from .utils import calculate_returns, rolling_std, compute_drawdown
+    from .lorentzian import LorentzianStrategy, LorentzianConfig, create_lorentz_sigma_13_strategy
 except ImportError:
     from model import TimeDynamicsModel, ModelParameters
     from utils import calculate_returns, rolling_std, compute_drawdown
+    from lorentzian import LorentzianStrategy, LorentzianConfig, create_lorentz_sigma_13_strategy
+
+
+class StrategyType(Enum):
+    """Available strategy types."""
+    TIME_DYNAMICS = "time_dynamics"
+    LORENTZIAN = "lorentzian"
+    COMBINED = "combined"
 
 
 class PositionSizing(Enum):
@@ -47,6 +65,8 @@ class BacktestConfig:
         transaction_cost: Transaction cost per trade (as fraction)
         slippage: Slippage per trade (as fraction)
         rebalance_frequency: Rebalancing frequency in days
+        strategy_type: Type of strategy to use (TIME_DYNAMICS, LORENTZIAN, COMBINED)
+        lorentzian_config: Configuration for Lorentzian strategy
     """
     initial_capital: float = 10000.0
     position_sizing: PositionSizing = PositionSizing.VOLATILITY_TARGET
@@ -55,6 +75,8 @@ class BacktestConfig:
     transaction_cost: float = 0.001  # 10 bps
     slippage: float = 0.0005  # 5 bps
     rebalance_frequency: int = 1  # Daily
+    strategy_type: StrategyType = StrategyType.LORENTZIAN  # Default to Lorentzian
+    lorentzian_config: Optional[LorentzianConfig] = None  # Use default if None
 
 
 @dataclass
@@ -130,7 +152,8 @@ class BacktestEngine:
     def __init__(
         self,
         model: Optional[TimeDynamicsModel] = None,
-        config: Optional[BacktestConfig] = None
+        config: Optional[BacktestConfig] = None,
+        lorentzian_strategy: Optional[LorentzianStrategy] = None
     ):
         """
         Initialize backtesting engine.
@@ -138,9 +161,21 @@ class BacktestEngine:
         Args:
             model: Time Dynamics Model instance
             config: Backtesting configuration
+            lorentzian_strategy: Lorentzian Classification strategy instance
         """
         self.model = model or TimeDynamicsModel()
         self.config = config or BacktestConfig()
+
+        # Initialize Lorentzian strategy if needed
+        if self.config.strategy_type in [StrategyType.LORENTZIAN, StrategyType.COMBINED]:
+            if lorentzian_strategy is not None:
+                self.lorentzian = lorentzian_strategy
+            elif self.config.lorentzian_config is not None:
+                self.lorentzian = LorentzianStrategy(self.config.lorentzian_config)
+            else:
+                self.lorentzian = create_lorentz_sigma_13_strategy()
+        else:
+            self.lorentzian = None
 
     def _compute_position_size(
         self,
@@ -198,7 +233,9 @@ class BacktestEngine:
     def run(
         self,
         prices: np.ndarray,
-        dates: Optional[np.ndarray] = None
+        dates: Optional[np.ndarray] = None,
+        high: Optional[np.ndarray] = None,
+        low: Optional[np.ndarray] = None
     ) -> BacktestResult:
         """
         Run backtest with strict look-ahead bias prevention.
@@ -206,6 +243,8 @@ class BacktestEngine:
         Args:
             prices: Price series (P_t)
             dates: Date array (optional)
+            high: High prices (optional, for Lorentzian strategy)
+            low: Low prices (optional, for Lorentzian strategy)
 
         Returns:
             BacktestResult with equity curves and metrics
@@ -219,8 +258,22 @@ class BacktestEngine:
         # Compute returns (this is bias-free: r[t] = P[t]/P[t-1] - 1)
         returns = calculate_returns(prices)
 
-        # Generate signals using the model (internally bias-free)
-        signals, confidence = self.model.generate_signal(prices)
+        # Generate signals based on strategy type
+        if self.config.strategy_type == StrategyType.LORENTZIAN:
+            # Use Lorentzian Classification (Lorentz Sigma 13)
+            signals, confidence, regimes = self.lorentzian.generate_signals(prices, high, low)
+        elif self.config.strategy_type == StrategyType.COMBINED:
+            # Combine Time Dynamics and Lorentzian signals
+            td_signals, td_confidence = self.model.generate_signal(prices)
+            lor_signals, lor_confidence, regimes = self.lorentzian.generate_signals(prices, high, low)
+
+            # Average the signals weighted by confidence
+            total_conf = td_confidence + lor_confidence + 1e-10
+            signals = (td_signals * td_confidence + lor_signals * lor_confidence) / total_conf
+            confidence = (td_confidence + lor_confidence) / 2
+        else:
+            # Use Time Dynamics Model (original)
+            signals, confidence = self.model.generate_signal(prices)
 
         # Compute rolling volatility for position sizing
         # Uses only past data (bias-free)
@@ -542,30 +595,118 @@ class WalkForwardOptimizer:
         return best_params, results
 
 
+def run_lorentz_sigma_13_backtest(
+    prices: np.ndarray,
+    initial_capital: float = 10000.0,
+    verbose: bool = True
+) -> BacktestResult:
+    """
+    Run the Lorentz Sigma 13 strategy backtest.
+
+    This is the recommended entry point for using the Lorentzian Classification
+    strategy that is designed to outperform S&P 500 buy-and-hold.
+
+    Args:
+        prices: Price series
+        initial_capital: Starting capital
+        verbose: Print summary if True
+
+    Returns:
+        BacktestResult with performance metrics
+    """
+    config = BacktestConfig(
+        initial_capital=initial_capital,
+        strategy_type=StrategyType.LORENTZIAN,
+        position_sizing=PositionSizing.VOLATILITY_TARGET,
+        volatility_target=0.15,
+        max_position=1.5,
+        transaction_cost=0.001,
+        slippage=0.0005
+    )
+
+    engine = BacktestEngine(config=config)
+    result = engine.run(prices)
+
+    if verbose:
+        print(engine.print_summary(result))
+
+    return result
+
+
 if __name__ == "__main__":
-    # Example backtest
+    # Example backtest comparing strategies
     np.random.seed(42)
 
-    # Generate sample price data (simulated S&P 500-like returns)
-    n = 1000
+    # Generate sample price data (simulated S&P 500-like returns with regime switching)
+    n = 2000
     dt = 1/252
-    mu = 0.08  # 8% annual drift
-    sigma = 0.18  # 18% annual volatility
 
-    # Generate GBM prices
-    returns = mu * dt + sigma * np.sqrt(dt) * np.random.randn(n)
-    prices = 100 * np.cumprod(1 + returns)
+    # Regime-switching simulation for more realistic test
+    prices = np.zeros(n)
+    prices[0] = 100
 
-    # Run backtest
-    model = TimeDynamicsModel()
-    config = BacktestConfig(
+    regime = 'normal'
+    for t in range(1, n):
+        # Random regime switches
+        if np.random.rand() < 0.02:
+            regime = np.random.choice(['bull', 'bear', 'normal'])
+
+        if regime == 'bull':
+            mu, sigma = 0.15, 0.12
+        elif regime == 'bear':
+            mu, sigma = -0.10, 0.30
+        else:
+            mu, sigma = 0.08, 0.18
+
+        ret = (mu - 0.5*sigma**2)*dt + sigma*np.sqrt(dt)*np.random.randn()
+        prices[t] = prices[t-1] * np.exp(ret)
+
+    print("=" * 70)
+    print("LORENTZ SIGMA 13 STRATEGY BACKTEST")
+    print("=" * 70)
+    print("\nThis strategy uses Lorentzian distance metric with k=13 neighbors")
+    print("and sigma=13 kernel smoothing to outperform S&P 500 buy-and-hold.\n")
+
+    # Run Lorentz Sigma 13 backtest
+    print("\n--- LORENTZIAN CLASSIFICATION (Lorentz Sigma 13) ---")
+    config_lorentzian = BacktestConfig(
         initial_capital=10000,
+        strategy_type=StrategyType.LORENTZIAN,
         position_sizing=PositionSizing.VOLATILITY_TARGET,
-        volatility_target=0.15
+        volatility_target=0.15,
+        max_position=1.5
     )
-    engine = BacktestEngine(model=model, config=config)
+    engine_lor = BacktestEngine(config=config_lorentzian)
+    result_lor = engine_lor.run(prices)
+    print(engine_lor.print_summary(result_lor))
 
-    result = engine.run(prices)
-    summary = engine.print_summary(result)
+    # Run Time Dynamics Model backtest for comparison
+    print("\n--- TIME DYNAMICS MODEL ---")
+    config_td = BacktestConfig(
+        initial_capital=10000,
+        strategy_type=StrategyType.TIME_DYNAMICS,
+        position_sizing=PositionSizing.VOLATILITY_TARGET,
+        volatility_target=0.15,
+        max_position=1.5
+    )
+    engine_td = BacktestEngine(config=config_td)
+    result_td = engine_td.run(prices)
+    print(engine_td.print_summary(result_td))
 
-    print(summary)
+    # Summary comparison
+    print("\n" + "=" * 70)
+    print("STRATEGY COMPARISON SUMMARY")
+    print("=" * 70)
+    print(f"\n{'Strategy':<25} {'Total Return':>15} {'Sharpe':>10} {'Max DD':>12}")
+    print("-" * 70)
+    print(f"{'Lorentz Sigma 13':<25} {result_lor.total_return:>14.2%} {result_lor.sharpe_ratio:>10.2f} {result_lor.max_drawdown:>11.2%}")
+    print(f"{'Time Dynamics':<25} {result_td.total_return:>14.2%} {result_td.sharpe_ratio:>10.2f} {result_td.max_drawdown:>11.2%}")
+    print(f"{'Buy & Hold (Benchmark)':<25} {result_lor.benchmark_return:>14.2%} {result_lor.benchmark_sharpe:>10.2f} {'N/A':>12}")
+    print()
+
+    # Check outperformance
+    if result_lor.total_return > result_lor.benchmark_return:
+        print("SUCCESS: Lorentz Sigma 13 outperformed Buy & Hold!")
+        print(f"Alpha generated: {result_lor.alpha:.4f}")
+    else:
+        print("Note: Buy & Hold outperformed in this simulation period")
