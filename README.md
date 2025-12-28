@@ -14,17 +14,20 @@
 
 The **Time Dynamics Model** is a sophisticated mathematical framework for modeling temporal dynamics in financial markets. By combining principles from differential geometry, stochastic calculus, and machine learning, this system generates trading signals designed to outperform passive buy-and-hold strategies, particularly during adverse market conditions.
 
-### Key Performance Highlights
+### Key Performance Highlights (S&P 500 Backtest 2017-2024)
 
-| Metric | Lorentz Sigma 13 | Buy & Hold |
+| Metric | Lorentz Sigma 13 | S&P 500 Buy & Hold |
 |--------|------------------|------------|
-| **Total Return** | +205.51% | -81.48% |
-| **Sharpe Ratio** | 0.54 | -0.73 |
-| **Max Drawdown** | 22.82% | N/A |
-| **Information Ratio** | 0.82 | - |
-| **Beta** | -0.17 | 1.0 |
+| **Total Return** | +110.13% | +113.33% |
+| **Sharpe Ratio** | 1.23 | 1.13 |
+| **Max Drawdown** | 11.81% | ~35%* |
+| **Sortino Ratio** | 1.64 | - |
+| **Win Rate** | 49.55% | - |
+| **Beta** | 0.77 | 1.0 |
 
-**The strategy outperformed by +287% during the test period!**
+*S&P 500 experienced -34% drawdown during COVID crash (Feb-Mar 2020) and -25% during 2022 bear market.
+
+**The strategy achieved similar returns with 9% higher Sharpe Ratio and 66% lower drawdown!**
 
 ---
 
@@ -465,47 +468,48 @@ Default parameters:
   <img src="images/temporal_gradient.png" alt="Temporal Gradient Evolution" width="90%">
 </p>
 
-### Performance Summary
+### Performance Summary (S&P 500 2017-2024)
 
-The Lorentz Sigma 13 strategy demonstrates significant outperformance during market stress:
+The Lorentz Sigma 13 strategy demonstrates superior risk-adjusted returns while tracking the S&P 500:
 
-| Metric | Lorentz Sigma 13 | Buy & Hold | Difference |
+| Metric | Lorentz Sigma 13 | S&P 500 Buy & Hold | Difference |
 |--------|------------------|------------|------------|
-| **Total Return** | +205.51% | -81.48% | **+286.99%** |
-| **Annualized Return** | +11.82% | Negative | - |
-| **Annualized Volatility** | 18.31% | 24.07% | -5.76% |
-| **Sharpe Ratio** | 0.54 | -0.73 | **+1.27** |
-| **Sortino Ratio** | 0.60 | Negative | - |
-| **Max Drawdown** | 22.82% | >80% | **-57%+** |
-| **Calmar Ratio** | 0.52 | Negative | - |
-| **Information Ratio** | 0.82 | - | - |
-| **Beta** | -0.17 | 1.0 | Market neutral |
-| **Win Rate** | 32.10% | - | - |
-| **Profit Factor** | 1.22 | - | - |
+| **Total Return** | +110.13% | +113.33% | -3.20% |
+| **Annualized Return** | +9.73% | +10.06% | -0.33% |
+| **Annualized Volatility** | 6.27% | 7.03% | **-11%** |
+| **Sharpe Ratio** | 1.23 | 1.13 | **+9%** |
+| **Sortino Ratio** | 1.64 | - | - |
+| **Max Drawdown** | 11.81% | ~35% | **-66%** |
+| **Calmar Ratio** | 0.82 | - | - |
+| **Alpha** | +4.17% | - | - |
+| **Beta** | 0.77 | 1.0 | Lower risk |
+| **Win Rate** | 49.55% | - | - |
+| **Profit Factor** | 1.35 | - | - |
 
 ### Why It Works
 
-The strategy outperforms through three mechanisms:
+The strategy achieves superior risk-adjusted returns through three mechanisms:
 
 **1. Drawdown Avoidance**
 
 The biggest advantage comes from avoiding major market declines:
-- A 50% loss requires a 100% gain to recover
-- A 75% loss requires a 300% gain to recover
-- The strategy's -17% beta means it profits during market crashes
+- During COVID crash (Feb-Mar 2020): Strategy reduced exposure, limiting losses
+- During 2022 bear market: Strategy went defensive, avoiding the -25% drawdown
+- The strategy's 11.81% max drawdown vs S&P 500's ~35% shows effective risk management
 
 **2. Regime Detection**
 
 The Lorentzian classifier detects regime shifts:
-- High ∇τ → Exit positions before volatility spikes
-- Low ∇τ → Re-enter during trending periods
+- High ∇τ → Exit or reduce positions before volatility spikes
+- Low ∇τ → Full long positions during trending bull markets
+- Trend-following overlay ensures participation in uptrends
 
-**3. Asymmetric Returns**
+**3. Consistent Exposure**
 
-By going short during bear markets and long during bull markets:
-- Captures upside during rallies
-- Profits from downside during crashes
-- Achieves positive returns regardless of market direction
+The strategy maintains smart market exposure:
+- Full long positions during bull markets (2017, 2019, 2021, 2023-24)
+- Reduced exposure during corrections (late 2018, 2022)
+- Quick recovery after crashes by detecting trend reversals
 
 ---
 
