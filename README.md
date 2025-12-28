@@ -253,7 +253,8 @@ The Lorentz Sigma 13 classifier follows this procedure:
 **Step 1: Feature Extraction**
 
 For each bar $t$, extract normalized features:
-$$\mathbf{f}_t = \begin{bmatrix} \text{RSI}_t \\ \text{WaveTrend}_t \\ \text{CCI}_t \\ \text{ADX}_t \\ \text{NormReturn}_t \end{bmatrix}$$
+
+$$\mathbf{f}_t = [\text{RSI}_t, \text{WaveTrend}_t, \text{CCI}_t, \text{ADX}_t, \text{NormReturn}_t]^T$$
 
 **Step 2: Historical Comparison**
 

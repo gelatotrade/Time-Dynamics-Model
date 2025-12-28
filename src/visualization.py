@@ -330,7 +330,7 @@ def plot_backtest_comparison(
     Create backtest comparison visualization.
 
     Shows model performance vs benchmark with optional signal overlay.
-    X-axis shows years (2017-2024) for realistic S&P 500 comparison.
+    X-axis shows years (2017-Dec 2025) for realistic S&P 500 comparison.
 
     Args:
         dates: Date array or index
@@ -414,7 +414,7 @@ def plot_backtest_comparison(
     ax.set_xlabel('Year', fontsize=12, color='white')
     ax.set_ylabel('Portfolio Value ($)', fontsize=12, color='white')
     ax.set_title(
-        'S&P 500 Backtest (2017-2024): Lorentz Sigma 13 vs Buy & Hold',
+        'S&P 500 Backtest (2017-Dec 2025): Lorentz Sigma 13 vs Buy & Hold',
         fontsize=14, color='white', pad=15
     )
 
