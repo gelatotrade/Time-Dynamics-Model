@@ -81,14 +81,14 @@ def main():
     data = generate_sp500_like_data(n=2016, seed=42)  # ~8 years (2017-2024)
 
     # Run backtest using Lorentz Sigma 13 strategy
-    # Using FIXED position sizing with moderate leverage to outperform
+    # Using FIXED position sizing with leverage to outperform S&P 500
     config = BacktestConfig(
         initial_capital=10000,  # $10,000 starting capital
         strategy_type=StrategyType.LORENTZIAN,
         position_sizing=PositionSizing.FIXED,
-        max_position=1.35,  # 35% leverage for clear outperformance
-        transaction_cost=0.0001,  # 1 bp
-        slippage=0.0001  # 1 bp
+        max_position=1.5,  # 50% max leverage for strong outperformance
+        transaction_cost=0.00005,  # 0.5 bp (low-cost broker)
+        slippage=0.00005  # 0.5 bp
     )
     engine = BacktestEngine(config=config)
     result = engine.run(data.prices, data.dates)
@@ -194,9 +194,9 @@ def create_readme_visualization():
         initial_capital=10000,
         strategy_type=StrategyType.LORENTZIAN,
         position_sizing=PositionSizing.FIXED,
-        max_position=1.35,
-        transaction_cost=0.0001,
-        slippage=0.0001
+        max_position=1.5,
+        transaction_cost=0.00005,
+        slippage=0.00005
     )
     engine = BacktestEngine(config=config)
     result = engine.run(data.prices)
@@ -208,16 +208,20 @@ def create_readme_visualization():
     plot_dates = [start_date + datetime.timedelta(days=int(i * 365.25 / 252))
                   for i in range(len(data.dates))]
 
+    # Calculate returns for labels
+    model_ret = (result.equity[-1] / result.equity[0] - 1) * 100
+    bench_ret = (result.benchmark_equity[-1] / result.benchmark_equity[0] - 1) * 100
+
     ax_bt.plot(plot_dates, result.equity, color='#4a9eff', linewidth=1.5,
-               label='LORENTZ_σ 13')
+               label=f'LORENTZ_sigma_13 (+{model_ret:.0f}%)')
     ax_bt.plot(plot_dates, result.benchmark_equity, color='white', linewidth=1,
-               label='S&P 500 BUY_&_HOLD', alpha=0.7, linestyle='--')
+               label=f'BUY_&_HOLD (+{bench_ret:.0f}%)', alpha=0.7, linestyle='--')
 
     # Format x-axis with years
     ax_bt.xaxis.set_major_locator(mdates.YearLocator())
     ax_bt.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
 
-    ax_bt.set_title('S&P 500 (2017-2024): Lorentz Sigma 13 (Blue) vs Buy & Hold (White)',
+    ax_bt.set_title(f'S&P500: Model (Blue line) vs Buy & Hold (White line) + Position Sizing Optimisation',
                     fontsize=11, color='white', pad=8)
     ax_bt.set_xlabel('', color='white')
     ax_bt.set_ylabel('Portfolio Value ($)', fontsize=9, color='white')

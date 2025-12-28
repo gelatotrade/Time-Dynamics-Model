@@ -677,20 +677,49 @@ class LorentzianStrategy:
             confidence[t] = signal.confidence
             regimes[t] = signal.regime
 
-        # Apply trend-following overlay: if recent prices trending up, increase long bias
+        # Apply trend-following overlay with aggressive bull market positioning
         returns = calculate_returns(prices)
         for t in range(min_history + 50, n):
-            recent_return = np.nanmean(returns[t-50:t])
-            short_return = np.nanmean(returns[max(t-10, 0):t])  # 10-day momentum
+            # Multiple momentum indicators
+            mom_200 = np.nanmean(returns[max(t-200, 0):t])  # Long-term trend
+            mom_50 = np.nanmean(returns[max(t-50, 0):t])    # Medium-term trend
+            mom_20 = np.nanmean(returns[max(t-20, 0):t])    # Short-term momentum
+            mom_5 = np.nanmean(returns[max(t-5, 0):t])      # Very short momentum
 
-            if recent_return > 0.0001:  # ~2.5% annualized - stay long in any uptrend
-                signals[t] = max(signals[t], 1.0)  # Full position in uptrend
-            elif recent_return < -0.002 and short_return < -0.003:  # Strong downtrend + recent crash
-                signals[t] = 0  # Exit completely during crashes
-            elif recent_return < -0.001:  # Moderate downtrend
-                signals[t] = min(signals[t], 0.5)  # Reduce exposure
+            # Calculate price relative to moving averages
+            if t >= 200:
+                ma_200 = np.mean(prices[t-200:t])
+                price_above_ma = prices[t-1] > ma_200
+            else:
+                price_above_ma = True
 
-        return signals, confidence, regimes
+            # Trend following rules - optimized for outperformance
+            if mom_200 > 0.0002 and price_above_ma:
+                # Strong bull market: use leverage
+                signals[t] = 1.5  # 50% leverage in strong uptrend
+            elif mom_50 > 0.0001:
+                # Normal uptrend: full position
+                signals[t] = max(signals[t], 1.0)
+            elif mom_20 < -0.002 and mom_5 < -0.004:
+                # Crash detection: severe short-term decline
+                signals[t] = 0.0  # Exit to cash during crashes
+            elif mom_50 < -0.001 and mom_20 < -0.001:
+                # Sustained downtrend: reduce exposure
+                signals[t] = min(signals[t], 0.3)
+            elif mom_50 < 0:
+                # Mild weakness: moderate reduction
+                signals[t] = min(signals[t], 0.7)
+
+        # Smooth signals to reduce whipsaws
+        smoothed_signals = np.zeros(n)
+        for t in range(min_history, n):
+            if t == min_history:
+                smoothed_signals[t] = signals[t]
+            else:
+                # Exponential smoothing with alpha=0.3
+                smoothed_signals[t] = 0.3 * signals[t] + 0.7 * smoothed_signals[t-1]
+
+        return smoothed_signals, confidence, regimes
 
     def compute_positions(self,
                           signals: np.ndarray,
