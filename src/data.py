@@ -321,13 +321,14 @@ def generate_realistic_sp500_prices(
         else:  # 2024 - Bull
             regime_idx[t] = 0  # strong_bull
 
-    # Define regimes
+    # Define regimes - calibrated for realistic S&P 500 behavior
+    # Bear regimes are shorter and less severe to match actual historical data
     regimes = {
-        0: {'mu': 0.30, 'sigma': 0.12},   # strong_bull
-        1: {'mu': 0.15, 'sigma': 0.14},   # bull
-        2: {'mu': 0.05, 'sigma': 0.16},   # normal
-        3: {'mu': -0.15, 'sigma': 0.25},  # correction
-        4: {'mu': -0.50, 'sigma': 0.40},  # bear (crash)
+        0: {'mu': 0.25, 'sigma': 0.10},   # strong_bull
+        1: {'mu': 0.12, 'sigma': 0.12},   # bull
+        2: {'mu': 0.06, 'sigma': 0.14},   # normal
+        3: {'mu': -0.10, 'sigma': 0.20},  # correction
+        4: {'mu': -0.30, 'sigma': 0.35},  # bear (crash) - less extreme
     }
 
     # Generate prices based on regimes
@@ -340,11 +341,14 @@ def generate_realistic_sp500_prices(
         prices[t] = prices[t-1] * np.exp(log_return)
 
     # Scale prices to hit target (ensure realistic final value ~4800)
+    # This scaling preserves the shape of returns while hitting target price
     target_final = 4800.0
-    target_total_return = np.log(target_final / initial_price)
+    target_total_return = np.log(target_final / initial_price)  # ~0.756 for 113% return
     actual_total_return = np.log(prices[-1] / prices[0])
 
-    if actual_total_return != 0:
+    # Only scale if actual return is positive (to avoid flipping signs)
+    # If actual return is negative or zero, regenerate with different approach
+    if actual_total_return > 0.1:  # Only scale if we have meaningful positive returns
         scaling_factor = target_total_return / actual_total_return
 
         # Apply scaling through returns
@@ -355,6 +359,19 @@ def generate_realistic_sp500_prices(
         prices[0] = initial_price
         for t in range(1, n):
             prices[t] = prices[t-1] * np.exp(scaled_log_returns[t-1])
+    else:
+        # Fallback: generate trending price series that hits target
+        # Use deterministic drift with regime-based volatility
+        trend_drift = target_total_return / n  # Constant drift to hit target
+
+        prices[0] = initial_price
+        for t in range(1, n):
+            regime = regime_idx[t]
+            sigma = regimes[regime]['sigma']
+            # Add regime-based volatility but ensure overall upward trend
+            noise = sigma * np.sqrt(dt) * np.random.randn()
+            log_return = trend_drift + noise * 0.5  # Reduce noise impact
+            prices[t] = prices[t-1] * np.exp(log_return)
 
     # Compute simple returns
     returns = np.zeros(n)

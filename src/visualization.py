@@ -360,11 +360,19 @@ def plot_backtest_comparison(
         plot_dates = [start_date + datetime.timedelta(days=int(i * 365.25 / 252))
                       for i in range(len(dates))]
 
-    # Plot equity curves
+    # Calculate returns for legend labels
+    model_return = (model_equity[-1] / model_equity[0] - 1) * 100
+    bench_return = (benchmark_equity[-1] / benchmark_equity[0] - 1) * 100
+
+    # Format returns with proper sign
+    model_return_str = f"+{model_return:.1f}%" if model_return >= 0 else f"{model_return:.1f}%"
+    bench_return_str = f"+{bench_return:.1f}%" if bench_return >= 0 else f"{bench_return:.1f}%"
+
+    # Plot equity curves with returns in legend
     ax.plot(plot_dates, model_equity, color='#4a9eff', linewidth=2,
-            label=f'{model_label}', alpha=0.9)
+            label=f'{model_label} ({model_return_str})', alpha=0.9)
     ax.plot(plot_dates, benchmark_equity, color='white', linewidth=1.5,
-            label=f'{benchmark_label}', alpha=0.7, linestyle='--')
+            label=f'{benchmark_label} ({bench_return_str})', alpha=0.7, linestyle='--')
 
     # Highlight regime periods if signals provided
     if signals is not None:
@@ -386,15 +394,16 @@ def plot_backtest_comparison(
             label='Short Position'
         )
 
-    # Calculate and display statistics
-    model_return = (model_equity[-1] / model_equity[0] - 1) * 100
-    bench_return = (benchmark_equity[-1] / benchmark_equity[0] - 1) * 100
+    # Calculate outperformance for stats box
     outperformance = model_return - bench_return
+    outperf_str = f"+{outperformance:.1f}%" if outperformance >= 0 else f"{outperformance:.1f}%"
 
-    stats_text = f'{model_label}: +{model_return:.1f}%\n{benchmark_label}: +{bench_return:.1f}%\nOutperformance: +{outperformance:.1f}%'
+    # Display outperformance statistics
+    stats_text = f'Outperformance: {outperf_str}'
 
     ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
-            fontsize=11, color='white', verticalalignment='top',
+            fontsize=11, color='#00ff00' if outperformance > 0 else '#ff4444',
+            verticalalignment='top', fontweight='bold',
             bbox=dict(boxstyle='round', facecolor='#333333', alpha=0.8))
 
     # Format x-axis with years
