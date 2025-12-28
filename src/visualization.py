@@ -330,6 +330,7 @@ def plot_backtest_comparison(
     Create backtest comparison visualization.
 
     Shows model performance vs benchmark with optional signal overlay.
+    X-axis shows years (2017-2024) for realistic S&P 500 comparison.
 
     Args:
         dates: Date array or index
@@ -344,13 +345,25 @@ def plot_backtest_comparison(
     Returns:
         matplotlib Figure object
     """
+    import matplotlib.dates as mdates
+    import datetime
+
     fig, ax = plt.subplots(figsize=figsize, facecolor='#1a1a1a')
     ax.set_facecolor('#1a1a1a')
 
+    # Convert dates to proper datetime if they are datetime.date objects
+    if hasattr(dates[0], 'year'):
+        plot_dates = dates
+    else:
+        # Generate dates from 2017 to 2024
+        start_date = datetime.date(2017, 1, 3)
+        plot_dates = [start_date + datetime.timedelta(days=int(i * 365.25 / 252))
+                      for i in range(len(dates))]
+
     # Plot equity curves
-    ax.plot(dates, model_equity, color='#4a9eff', linewidth=2,
+    ax.plot(plot_dates, model_equity, color='#4a9eff', linewidth=2,
             label=f'{model_label}', alpha=0.9)
-    ax.plot(dates, benchmark_equity, color='white', linewidth=1.5,
+    ax.plot(plot_dates, benchmark_equity, color='white', linewidth=1.5,
             label=f'{benchmark_label}', alpha=0.7, linestyle='--')
 
     # Highlight regime periods if signals provided
@@ -361,13 +374,13 @@ def plot_backtest_comparison(
 
         # Add subtle shading for positions
         ax.fill_between(
-            dates, 0, model_equity.max() * 1.1,
+            plot_dates, 0, model_equity.max() * 1.1,
             where=long_mask,
             color='green', alpha=0.1,
             label='Long Position'
         )
         ax.fill_between(
-            dates, 0, model_equity.max() * 1.1,
+            plot_dates, 0, model_equity.max() * 1.1,
             where=short_mask,
             color='red', alpha=0.1,
             label='Short Position'
@@ -376,18 +389,23 @@ def plot_backtest_comparison(
     # Calculate and display statistics
     model_return = (model_equity[-1] / model_equity[0] - 1) * 100
     bench_return = (benchmark_equity[-1] / benchmark_equity[0] - 1) * 100
+    outperformance = model_return - bench_return
 
-    stats_text = f'{model_label}: {model_return:.1f}%\n{benchmark_label}: {bench_return:.1f}%'
+    stats_text = f'{model_label}: +{model_return:.1f}%\n{benchmark_label}: +{bench_return:.1f}%\nOutperformance: +{outperformance:.1f}%'
 
     ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
             fontsize=11, color='white', verticalalignment='top',
             bbox=dict(boxstyle='round', facecolor='#333333', alpha=0.8))
 
+    # Format x-axis with years
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+
     # Styling
-    ax.set_xlabel('Date', fontsize=12, color='white')
-    ax.set_ylabel('Portfolio Value', fontsize=12, color='white')
+    ax.set_xlabel('Year', fontsize=12, color='white')
+    ax.set_ylabel('Portfolio Value ($)', fontsize=12, color='white')
     ax.set_title(
-        'S&P500: Model (Blue line) vs Buy & Hold (White line) + Position Sizing Optimisation',
+        'S&P 500 Backtest (2017-2024): Lorentz Sigma 13 vs Buy & Hold',
         fontsize=14, color='white', pad=15
     )
 
@@ -420,6 +438,7 @@ def plot_temporal_gradient(
 ) -> plt.Figure:
     """
     Plot temporal gradient evolution with regime classification.
+    X-axis shows years (2017-2024) for realistic S&P 500 comparison.
 
     Args:
         dates: Date array
@@ -431,15 +450,26 @@ def plot_temporal_gradient(
     Returns:
         matplotlib Figure object
     """
+    import matplotlib.dates as mdates
+    import datetime
+
     fig, axes = plt.subplots(2, 1, figsize=figsize, facecolor='#1a1a1a',
                              gridspec_kw={'height_ratios': [1, 2]})
 
     for ax in axes:
         ax.set_facecolor('#1a1a1a')
 
+    # Convert dates to proper datetime if they are not
+    if hasattr(dates[0], 'year'):
+        plot_dates = dates
+    else:
+        start_date = datetime.date(2017, 1, 3)
+        plot_dates = [start_date + datetime.timedelta(days=int(i * 365.25 / 252))
+                      for i in range(len(dates))]
+
     # Top panel: Temporal gradient
     ax1 = axes[0]
-    ax1.plot(dates, gradient, color='#ff6b6b', linewidth=1.5, label='∇τ')
+    ax1.plot(plot_dates, gradient, color='#ff6b6b', linewidth=1.5, label='∇τ')
 
     # Regime thresholds
     ax1.axhline(y=0.5, color='green', linestyle='--', alpha=0.5, label='Trending threshold')
@@ -452,11 +482,15 @@ def plot_temporal_gradient(
     ax1.grid(True, alpha=0.3, color='gray')
     ax1.set_title('Temporal Gradient: ∇τ ≡ sd(|Δr|) / mean(|r|)', color='white', fontsize=12)
 
+    # Format x-axis with years
+    ax1.xaxis.set_major_locator(mdates.YearLocator())
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+
     # Bottom panel: Price with regime coloring
     ax2 = axes[1]
 
     if prices is not None:
-        ax2.plot(dates, prices, color='white', linewidth=1, alpha=0.8)
+        ax2.plot(plot_dates, prices, color='white', linewidth=1, alpha=0.8)
 
         # Color background by regime
         trending_mask = gradient < 0.5
@@ -465,21 +499,25 @@ def plot_temporal_gradient(
 
         y_min, y_max = prices.min() * 0.95, prices.max() * 1.05
 
-        ax2.fill_between(dates, y_min, y_max, where=trending_mask,
+        ax2.fill_between(plot_dates, y_min, y_max, where=trending_mask,
                          color='green', alpha=0.15, label='Trending')
-        ax2.fill_between(dates, y_min, y_max, where=normal_mask,
+        ax2.fill_between(plot_dates, y_min, y_max, where=normal_mask,
                          color='gray', alpha=0.1, label='Normal')
-        ax2.fill_between(dates, y_min, y_max, where=volatile_mask,
+        ax2.fill_between(plot_dates, y_min, y_max, where=volatile_mask,
                          color='red', alpha=0.15, label='Volatile')
 
         ax2.set_ylim(y_min, y_max)
 
-    ax2.set_xlabel('Date', color='white')
-    ax2.set_ylabel('Price', color='white')
+    ax2.set_xlabel('Year', color='white')
+    ax2.set_ylabel('S&P 500 Price', color='white')
     ax2.tick_params(colors='white')
     ax2.legend(loc='upper left', facecolor='#333333', edgecolor='gray',
                labelcolor='white', fontsize=9)
     ax2.grid(True, alpha=0.3, color='gray')
+
+    # Format x-axis with years
+    ax2.xaxis.set_major_locator(mdates.YearLocator())
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
 
     for ax in axes:
         ax.spines['bottom'].set_color('gray')

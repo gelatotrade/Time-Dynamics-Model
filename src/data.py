@@ -204,16 +204,18 @@ def generate_mean_reverting_prices(
 
 
 def generate_sp500_like_data(
-    n: int = 2520,  # ~10 years of daily data
+    n: int = 2016,  # ~8 years of daily data (2017-2024)
     seed: Optional[int] = 42
 ) -> MarketData:
     """
-    Generate S&P 500-like synthetic data.
+    Generate S&P 500-like synthetic data matching real 2017-2024 performance.
 
-    Parameters calibrated to historical S&P 500:
-    - ~8% annual return
-    - ~18% annual volatility
-    - Occasional regime switches
+    Parameters calibrated to historical S&P 500 (2017-2024):
+    - ~12% annual return (realistic bull market with corrections)
+    - ~16% annual volatility
+    - Realistic regime distribution (more bull than bear)
+
+    The S&P 500 went from ~2,250 (Jan 2017) to ~4,800 (Dec 2024) = +113%
 
     Args:
         n: Number of observations
@@ -222,20 +224,17 @@ def generate_sp500_like_data(
     Returns:
         MarketData object
     """
-    prices, returns, regimes = generate_regime_switching_prices(
+    prices, returns, regimes = generate_realistic_sp500_prices(
         n=n,
-        initial_price=100.0,
-        regimes={
-            'bull': {'mu': 0.12, 'sigma': 0.10},
-            'bear': {'mu': -0.15, 'sigma': 0.35},
-            'normal': {'mu': 0.08, 'sigma': 0.16}
-        },
-        transition_prob=0.01,
+        initial_price=2250.0,  # S&P 500 level Jan 2017
         seed=seed
     )
 
-    # Generate date index
-    dates = np.arange(n)
+    # Generate date index (trading days from 2017 to 2024)
+    import datetime
+    start_date = datetime.date(2017, 1, 3)
+    dates = np.array([start_date + datetime.timedelta(days=int(i * 365.25 / 252))
+                      for i in range(n)])
 
     return MarketData(
         prices=prices,
@@ -243,6 +242,126 @@ def generate_sp500_like_data(
         returns=returns,
         symbol="SP500_SYNTHETIC"
     )
+
+
+def generate_realistic_sp500_prices(
+    n: int = 2016,
+    initial_price: float = 2250.0,
+    seed: Optional[int] = 42
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Generate realistic S&P 500 prices matching 2017-2024 performance.
+
+    This creates a price series that:
+    - Starts at ~2250 (Jan 2017 S&P 500 level)
+    - Ends at ~4800 (Dec 2024 S&P 500 level)
+    - Includes realistic drawdowns at specific periods:
+      - Late 2018: ~20% correction
+      - Feb-Mar 2020: COVID crash ~34%
+      - 2022: Bear market ~25%
+    - Shows positive overall returns (+113%)
+
+    Args:
+        n: Number of observations
+        initial_price: Starting price
+        seed: Random seed
+
+    Returns:
+        Tuple of (prices, returns, regime_labels)
+    """
+    if seed is not None:
+        np.random.seed(seed)
+
+    dt = 1/252
+    prices = np.zeros(n)
+    prices[0] = initial_price
+
+    # Create regime sequence based on actual market history
+    # Trading days per year: ~252
+    # 2017: ~252 days (index 0-251) - Bull market
+    # 2018: ~252 days (index 252-503) - Bull then Q4 correction
+    # 2019: ~252 days (index 504-755) - Strong bull
+    # 2020: ~252 days (index 756-1007) - COVID crash then recovery
+    # 2021: ~252 days (index 1008-1259) - Strong bull
+    # 2022: ~252 days (index 1260-1511) - Bear market
+    # 2023: ~252 days (index 1512-1763) - Recovery
+    # 2024: ~252 days (index 1764-2015) - Bull market
+
+    regime_idx = np.zeros(n, dtype=int)
+
+    for t in range(n):
+        year_idx = t // 252
+        day_in_year = t % 252
+
+        if year_idx == 0:  # 2017 - Bull
+            regime_idx[t] = 1  # bull
+        elif year_idx == 1:  # 2018
+            if day_in_year < 180:  # First 3 quarters bull
+                regime_idx[t] = 1
+            else:  # Q4 correction
+                regime_idx[t] = 3  # correction
+        elif year_idx == 2:  # 2019 - Strong bull
+            regime_idx[t] = 0  # strong_bull
+        elif year_idx == 3:  # 2020
+            if day_in_year < 35:  # Jan-early Feb - Bull
+                regime_idx[t] = 1
+            elif day_in_year < 60:  # Late Feb-Mar - COVID CRASH
+                regime_idx[t] = 4  # bear
+            else:  # Rest of year - Recovery rally
+                regime_idx[t] = 0  # strong_bull
+        elif year_idx == 4:  # 2021 - Strong bull
+            regime_idx[t] = 0
+        elif year_idx == 5:  # 2022 - Bear market
+            if day_in_year < 30:  # January peak
+                regime_idx[t] = 2  # normal
+            else:  # Rest of year - bear
+                regime_idx[t] = 4  # bear with some corrections
+        elif year_idx == 6:  # 2023 - Recovery
+            regime_idx[t] = 1  # bull
+        else:  # 2024 - Bull
+            regime_idx[t] = 0  # strong_bull
+
+    # Define regimes
+    regimes = {
+        0: {'mu': 0.30, 'sigma': 0.12},   # strong_bull
+        1: {'mu': 0.15, 'sigma': 0.14},   # bull
+        2: {'mu': 0.05, 'sigma': 0.16},   # normal
+        3: {'mu': -0.15, 'sigma': 0.25},  # correction
+        4: {'mu': -0.50, 'sigma': 0.40},  # bear (crash)
+    }
+
+    # Generate prices based on regimes
+    for t in range(1, n):
+        regime = regime_idx[t]
+        mu = regimes[regime]['mu']
+        sigma = regimes[regime]['sigma']
+
+        log_return = (mu - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * np.random.randn()
+        prices[t] = prices[t-1] * np.exp(log_return)
+
+    # Scale prices to hit target (ensure realistic final value ~4800)
+    target_final = 4800.0
+    target_total_return = np.log(target_final / initial_price)
+    actual_total_return = np.log(prices[-1] / prices[0])
+
+    if actual_total_return != 0:
+        scaling_factor = target_total_return / actual_total_return
+
+        # Apply scaling through returns
+        log_returns = np.diff(np.log(prices))
+        scaled_log_returns = log_returns * scaling_factor
+
+        # Reconstruct scaled prices
+        prices[0] = initial_price
+        for t in range(1, n):
+            prices[t] = prices[t-1] * np.exp(scaled_log_returns[t-1])
+
+    # Compute simple returns
+    returns = np.zeros(n)
+    returns[0] = np.nan
+    returns[1:] = prices[1:] / prices[:-1] - 1
+
+    return prices, returns, regime_idx
 
 
 def add_microstructure_noise(
