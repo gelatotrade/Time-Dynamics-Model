@@ -1,0 +1,369 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Time Dynamics Research - Lorentz Sigma 13 Strategy
+// Based on Lorentzian Classification by jdehorty (AI Edge)
+
+//@version=5
+strategy("Lorentz Sigma 13 Strategy",
+     overlay=true,
+     pyramiding=0,
+     default_qty_type=strategy.percent_of_equity,
+     default_qty_value=100,
+     initial_capital=10000,
+     commission_type=strategy.commission.percent,
+     commission_value=0.1,
+     slippage=2,
+     process_orders_on_close=true)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LORENTZ SIGMA 13 STRATEGY
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Mathematical Foundation:
+// ------------------------
+// This strategy uses Lorentzian distance instead of Euclidean distance for
+// K-Nearest Neighbor classification:
+//
+// Euclidean: d(x,y) = sqrt(sum((x_i - y_i)^2))
+// Lorentzian: d(x,y) = sum(ln(1 + |x_i - y_i|))
+//
+// The logarithmic transformation compresses outliers, making the algorithm
+// robust to Black Swan events and volatility regime changes.
+//
+// The "Sigma 13" Configuration:
+// - Neighbors (k) = 13: K-Nearest Neighbors for classification
+// - Kernel Sigma = 13: Gaussian kernel smoothing bandwidth
+// - Lookback = 13: Feature normalization window
+//
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INPUT PARAMETERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+group_knn = "KNN Settings"
+neighborsCount = input.int(13, "Neighbors Count (k)", minval=1, maxval=50, group=group_knn,
+     tooltip="Number of nearest neighbors for classification. 13 is the Fibonacci-optimized default.")
+maxBarsBack = input.int(2000, "Max Lookback Bars", minval=100, maxval=5000, group=group_knn,
+     tooltip="Maximum historical bars to search for neighbors.")
+
+group_kernel = "Kernel Settings"
+kernelSigma = input.float(13.0, "Kernel Sigma", minval=1.0, maxval=50.0, group=group_kernel,
+     tooltip="Gaussian kernel bandwidth for neighbor weighting.")
+kernelLookback = input.int(13, "Kernel Lookback", minval=5, maxval=50, group=group_kernel,
+     tooltip="Lookback period for kernel regression smoothing.")
+useRationalQuadratic = input.bool(false, "Use Rational Quadratic Kernel", group=group_kernel,
+     tooltip="Use Rational Quadratic kernel instead of Gaussian.")
+
+group_features = "Feature Engineering"
+rsiPeriod = input.int(14, "RSI Period", minval=2, maxval=50, group=group_features)
+cciPeriod = input.int(20, "CCI Period", minval=5, maxval=50, group=group_features)
+adxPeriod = input.int(14, "ADX Period", minval=5, maxval=50, group=group_features)
+wtChannelPeriod = input.int(10, "WaveTrend Channel", minval=5, maxval=30, group=group_features)
+wtAveragePeriod = input.int(21, "WaveTrend Average", minval=5, maxval=50, group=group_features)
+
+group_filter = "Regime Filter"
+useRegimeFilter = input.bool(true, "Enable Regime Filter", group=group_filter,
+     tooltip="Filter out signals during volatile/ranging markets.")
+regimeThreshold = input.float(-0.1, "Regime Threshold", minval=-1.0, maxval=1.0, step=0.1, group=group_filter)
+volatilityPeriod = input.int(20, "Volatility Period", minval=5, maxval=50, group=group_filter)
+
+group_position = "Position Sizing"
+useConfidenceScaling = input.bool(true, "Use Confidence Scaling", group=group_position,
+     tooltip="Scale position size based on prediction confidence.")
+minConfidence = input.float(0.5, "Minimum Confidence", minval=0.1, maxval=0.9, step=0.1, group=group_position)
+useVolatilityScaling = input.bool(true, "Use Volatility Scaling", group=group_position,
+     tooltip="Scale position to target volatility.")
+volatilityTarget = input.float(0.15, "Volatility Target (Annual)", minval=0.05, maxval=0.50, step=0.05, group=group_position)
+maxPositionSize = input.float(1.5, "Max Position Size", minval=0.5, maxval=3.0, step=0.1, group=group_position)
+
+group_exits = "Dynamic Exits"
+useDynamicExits = input.bool(true, "Use Dynamic Exits", group=group_exits)
+takeProfit = input.float(5.0, "Take Profit %", minval=1.0, maxval=20.0, step=0.5, group=group_exits)
+stopLoss = input.float(3.0, "Stop Loss %", minval=0.5, maxval=10.0, step=0.5, group=group_exits)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FEATURE CALCULATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// RSI (Relative Strength Index)
+rsi = ta.rsi(close, rsiPeriod)
+rsiNorm = rsi / 100.0
+
+// CCI (Commodity Channel Index)
+cci = ta.cci(high, low, close, cciPeriod)
+cciMin = ta.lowest(cci, 100)
+cciMax = ta.highest(cci, 100)
+cciNorm = (cci - cciMin) / (cciMax - cciMin + 0.0001)
+
+// ADX (Average Directional Index)
+[diPlus, diMinus, adx] = ta.dmi(adxPeriod, adxPeriod)
+adxNorm = adx / 100.0
+
+// WaveTrend Oscillator
+hlc3 = (high + low + close) / 3
+esa = ta.ema(hlc3, wtChannelPeriod)
+d = ta.ema(math.abs(hlc3 - esa), wtChannelPeriod)
+ci = (hlc3 - esa) / (0.015 * d)
+wt = ta.ema(ci, wtAveragePeriod)
+wtMin = ta.lowest(wt, 100)
+wtMax = ta.highest(wt, 100)
+wtNorm = (wt - wtMin) / (wtMax - wtMin + 0.0001)
+
+// Normalized Returns
+returns = (close - close[1]) / close[1]
+retMin = ta.lowest(returns, 50)
+retMax = ta.highest(returns, 50)
+retNorm = (returns - retMin) / (retMax - retMin + 0.0001)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LORENTZIAN DISTANCE FUNCTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Lorentzian distance: d(x,y) = sum(ln(1 + |x_i - y_i|))
+lorentzianComponent(float x, float y) =>
+    math.log(1 + math.abs(x - y))
+
+// Compute Lorentzian distance between current and historical feature vectors
+computeLorentzianDistance(int offset) =>
+    d1 = lorentzianComponent(rsiNorm, rsiNorm[offset])
+    d2 = lorentzianComponent(wtNorm, wtNorm[offset])
+    d3 = lorentzianComponent(cciNorm, cciNorm[offset])
+    d4 = lorentzianComponent(adxNorm, adxNorm[offset])
+    d5 = lorentzianComponent(retNorm, retNorm[offset])
+    d1 + d2 + d3 + d4 + d5
+
+// Gaussian kernel weight
+gaussianKernel(float distance, float sigma) =>
+    math.exp(-math.pow(distance, 2) / (2 * math.pow(sigma, 2)))
+
+// Rational Quadratic kernel weight
+rationalQuadraticKernel(float distance, float sigma, float alpha) =>
+    math.pow(1 + math.pow(distance, 2) / (2 * alpha * math.pow(sigma, 2)), -alpha)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KNN CLASSIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Arrays to store distances and outcomes
+var float[] distances = array.new_float(0)
+var float[] outcomes = array.new_float(0)
+var int[] indices = array.new_int(0)
+
+// Compute outcome: +1 if price went up after 4 bars, -1 if down
+outcome(int offset) =>
+    futureClose = close[offset - 4]
+    currentClose = close[offset]
+    futureClose > currentClose ? 1.0 : -1.0
+
+// Find K nearest neighbors and classify
+var float prediction = 0.0
+var float confidence = 0.0
+var float avgDistance = 0.0
+
+if barstate.islast or barstate.isrealtime
+    // Clear arrays
+    array.clear(distances)
+    array.clear(outcomes)
+    array.clear(indices)
+
+    // Compute distances to historical points
+    lookbackLimit = math.min(maxBarsBack, bar_index - 200)
+
+    for i = 5 to lookbackLimit
+        dist = computeLorentzianDistance(i)
+        array.push(distances, dist)
+        array.push(outcomes, outcome(i))
+        array.push(indices, i)
+
+    // Sort by distance and get k nearest neighbors
+    if array.size(distances) >= neighborsCount
+        // Simple selection of k smallest (approximation without full sort)
+        float weightedVoteSum = 0.0
+        float weightSum = 0.0
+        float distanceSum = 0.0
+        int voteCount = 0
+
+        // Find the k nearest neighbors
+        for j = 0 to neighborsCount - 1
+            minIdx = -1
+            minDist = 999999.0
+
+            // Find minimum distance not yet selected
+            for k = 0 to array.size(distances) - 1
+                if array.get(distances, k) < minDist
+                    minDist := array.get(distances, k)
+                    minIdx := k
+
+            if minIdx >= 0
+                // Get outcome and compute weight
+                outcomeVal = array.get(outcomes, minIdx)
+
+                // Compute kernel weight
+                weight = useRationalQuadratic ?
+                     rationalQuadraticKernel(minDist, kernelSigma, 1.0) :
+                     gaussianKernel(minDist, kernelSigma)
+
+                weightedVoteSum += outcomeVal * weight
+                weightSum += weight
+                distanceSum += minDist
+                voteCount += outcomeVal > 0 ? 1 : -1
+
+                // Mark as used (set to large value)
+                array.set(distances, minIdx, 999999.0)
+
+        // Compute prediction and confidence
+        if weightSum > 0
+            prediction := weightedVoteSum / weightSum
+
+        // Confidence based on unanimity and distance
+        unanimity = math.abs(voteCount) / neighborsCount
+        avgDistance := distanceSum / neighborsCount
+        distanceConfidence = 1 / (1 + avgDistance)
+        confidence := (unanimity + distanceConfidence) / 2
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REGIME FILTER
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Calculate rolling volatility
+dailyVolatility = ta.stdev(returns, volatilityPeriod)
+annualizedVol = dailyVolatility * math.sqrt(252)
+
+// Regime classification based on average distance
+regimeIsTrending = avgDistance < 1.0
+regimeIsNormal = avgDistance >= 1.0 and avgDistance < 3.0
+regimeIsVolatile = avgDistance >= 3.0
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POSITION SIZING
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Base position from prediction
+basePosition = prediction > 0.1 ? 1.0 : prediction < -0.1 ? -1.0 : 0.0
+
+// Apply confidence scaling
+positionAfterConfidence = useConfidenceScaling and confidence < minConfidence ? 0.0 : basePosition * (useConfidenceScaling ? confidence : 1.0)
+
+// Apply volatility scaling
+volScalar = useVolatilityScaling and annualizedVol > 0 ?
+     math.min(math.max(volatilityTarget / annualizedVol, 0.5), 2.0) : 1.0
+
+finalPosition = math.min(math.max(positionAfterConfidence * volScalar, -maxPositionSize), maxPositionSize)
+
+// Apply regime filter
+if useRegimeFilter and regimeIsVolatile
+    finalPosition := finalPosition * 0.5
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNAL GENERATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Kernel regression for signal smoothing
+kernelSmoothedPrediction = ta.sma(prediction, kernelLookback)
+
+// Generate trading signals
+longSignal = kernelSmoothedPrediction > 0.1 and finalPosition > 0 and confidence >= minConfidence
+shortSignal = kernelSmoothedPrediction < -0.1 and finalPosition < 0 and confidence >= minConfidence
+exitLongSignal = kernelSmoothedPrediction <= 0 or confidence < minConfidence * 0.8
+exitShortSignal = kernelSmoothedPrediction >= 0 or confidence < minConfidence * 0.8
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STRATEGY EXECUTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Entry conditions
+if longSignal and strategy.position_size <= 0
+    strategy.entry("Long", strategy.long)
+
+if shortSignal and strategy.position_size >= 0
+    strategy.entry("Short", strategy.short)
+
+// Exit conditions
+if exitLongSignal and strategy.position_size > 0
+    strategy.close("Long")
+
+if exitShortSignal and strategy.position_size < 0
+    strategy.close("Short")
+
+// Dynamic exits (stop loss and take profit)
+if useDynamicExits
+    if strategy.position_size > 0
+        strategy.exit("Long Exit", "Long",
+             profit=close * takeProfit / 100 / syminfo.mintick,
+             loss=close * stopLoss / 100 / syminfo.mintick)
+    if strategy.position_size < 0
+        strategy.exit("Short Exit", "Short",
+             profit=close * takeProfit / 100 / syminfo.mintick,
+             loss=close * stopLoss / 100 / syminfo.mintick)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VISUALIZATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Kernel regression line
+kernelLine = ta.sma(close, kernelLookback)
+kernelColor = kernelSmoothedPrediction > 0.1 ? color.new(color.green, 50) :
+              kernelSmoothedPrediction < -0.1 ? color.new(color.red, 50) :
+              color.new(color.gray, 50)
+plot(kernelLine, "Kernel Regression", color=kernelColor, linewidth=2)
+
+// Background color for regime
+bgcolor(regimeIsTrending ? color.new(color.green, 95) :
+        regimeIsVolatile ? color.new(color.red, 95) :
+        na, title="Regime Background")
+
+// Signal plots
+plotshape(longSignal and strategy.position_size <= 0 ? low : na,
+     title="Long Signal", style=shape.triangleup, location=location.belowbar,
+     color=color.green, size=size.small)
+plotshape(shortSignal and strategy.position_size >= 0 ? high : na,
+     title="Short Signal", style=shape.triangledown, location=location.abovebar,
+     color=color.red, size=size.small)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INFORMATION PANEL
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Table for displaying strategy info
+var table infoTable = table.new(position.top_right, 2, 8,
+     bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1)
+
+if barstate.islast
+    table.cell(infoTable, 0, 0, "LORENTZ SIGMA 13", text_color=color.white, text_size=size.normal)
+    table.cell(infoTable, 1, 0, "", text_color=color.white)
+
+    table.cell(infoTable, 0, 1, "Prediction:", text_color=color.gray)
+    predColor = prediction > 0 ? color.green : prediction < 0 ? color.red : color.gray
+    table.cell(infoTable, 1, 1, str.tostring(prediction, "#.###"), text_color=predColor)
+
+    table.cell(infoTable, 0, 2, "Confidence:", text_color=color.gray)
+    confColor = confidence > 0.7 ? color.green : confidence > 0.5 ? color.yellow : color.red
+    table.cell(infoTable, 1, 2, str.tostring(confidence * 100, "#.#") + "%", text_color=confColor)
+
+    table.cell(infoTable, 0, 3, "Avg Distance:", text_color=color.gray)
+    table.cell(infoTable, 1, 3, str.tostring(avgDistance, "#.##"), text_color=color.white)
+
+    table.cell(infoTable, 0, 4, "Regime:", text_color=color.gray)
+    regimeText = regimeIsTrending ? "TRENDING" : regimeIsVolatile ? "VOLATILE" : "NORMAL"
+    regimeColor = regimeIsTrending ? color.green : regimeIsVolatile ? color.red : color.gray
+    table.cell(infoTable, 1, 4, regimeText, text_color=regimeColor)
+
+    table.cell(infoTable, 0, 5, "Position:", text_color=color.gray)
+    posText = strategy.position_size > 0 ? "LONG" : strategy.position_size < 0 ? "SHORT" : "FLAT"
+    posColor = strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray
+    table.cell(infoTable, 1, 5, posText, text_color=posColor)
+
+    table.cell(infoTable, 0, 6, "Ann. Vol:", text_color=color.gray)
+    table.cell(infoTable, 1, 6, str.tostring(annualizedVol * 100, "#.#") + "%", text_color=color.white)
+
+    table.cell(infoTable, 0, 7, "Neighbors:", text_color=color.gray)
+    table.cell(infoTable, 1, 7, str.tostring(neighborsCount), text_color=color.white)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALERTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+alertcondition(longSignal, title="Long Signal", message="Lorentz Sigma 13: LONG signal detected. Confidence: {{confidence}}%")
+alertcondition(shortSignal, title="Short Signal", message="Lorentz Sigma 13: SHORT signal detected. Confidence: {{confidence}}%")
+alertcondition(exitLongSignal, title="Exit Long", message="Lorentz Sigma 13: Exit LONG position")
+alertcondition(exitShortSignal, title="Exit Short", message="Lorentz Sigma 13: Exit SHORT position")
