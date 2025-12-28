@@ -287,8 +287,7 @@ class BacktestEngine:
         equity = np.zeros(n)
         equity[0] = self.config.initial_capital
 
-        # Track trading costs
-        total_costs = 0.0
+        # Track trading
         prev_position = 0.0
 
         # Main backtest loop
@@ -304,13 +303,6 @@ class BacktestEngine:
             position = self._compute_position_size(signal_t_minus_1, vol_t_minus_1, t)
             positions[t] = position
 
-            # Compute trading costs (only when position changes)
-            position_change = abs(position - prev_position)
-            if position_change > 1e-6:
-                cost = position_change * (self.config.transaction_cost + self.config.slippage)
-                total_costs += cost * equity[t - 1]
-            prev_position = position
-
             # Strategy return at t (position from t-1 * return at t)
             # This is the correct way: we don't know r[t] when we set position
             if not np.isnan(returns[t]):
@@ -318,11 +310,17 @@ class BacktestEngine:
             else:
                 strategy_returns[t] = 0
 
-            # Update equity
+            # Update equity from returns first
             equity[t] = equity[t - 1] * (1 + strategy_returns[t])
 
-        # Apply accumulated costs
-        equity = equity - total_costs * (equity / equity[-1])
+            # Apply trading costs (only when position changes)
+            # Cost = percentage of the traded notional value
+            position_change = abs(position - prev_position)
+            if position_change > 1e-6:
+                # Cost is applied as percentage of the position change times equity
+                cost_pct = position_change * (self.config.transaction_cost + self.config.slippage)
+                equity[t] = equity[t] * (1 - cost_pct)
+            prev_position = position
 
         # Compute benchmark (buy and hold)
         benchmark_returns = returns.copy()
