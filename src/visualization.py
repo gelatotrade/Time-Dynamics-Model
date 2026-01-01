@@ -48,6 +48,17 @@ class SurfaceGenerator:
 
     The surface represents Z(x, y) = F(β, α, τ, ∇τ; x, y, t) over
     the feature space (Space_X, Space_Y) evolving through TIME.
+
+    Core Parameters:
+    ================
+    (1) Velocity (Drift) — β ≡ μ/σ
+        Risk-adjusted momentum (Sharpe-like ratio)
+
+    (2) Jerk (Second Difference Mean) — α ≡ (1/(n-2)) * Σ(r_{t+2} - 2r_{t+1} + r_t)
+        Momentum curvature (rate of change of acceleration)
+
+    (3) Proper Time Deviation — τ ≡ S_n / (σ√n), where S_n = Σ(r_t - μ)
+        Normalized cumulative drift from mean
     """
 
     def __init__(
@@ -61,9 +72,9 @@ class SurfaceGenerator:
         Initialize surface generator with model parameters.
 
         Args:
-            beta: Amplitude scaling (market regime parameter)
-            alpha: Decay rate for spatial attenuation
-            tau: Characteristic oscillation period
+            beta: Velocity parameter (β ≡ μ/σ) - risk-adjusted drift
+            alpha: Jerk parameter (α) - momentum curvature
+            tau: Proper time deviation (τ) - cumulative drift
             sigma: Kernel width for feature interaction
         """
         self.beta = beta
@@ -553,7 +564,7 @@ def plot_formula_visualization(
     This replicates the reference image layout with:
     - Title and main formula at top
     - 3D surface visualization
-    - Formula annotations
+    - Formula annotations for β, α, τ parameters
 
     Args:
         figsize: Figure size
@@ -565,28 +576,33 @@ def plot_formula_visualization(
     fig = plt.figure(figsize=figsize, facecolor='black')
 
     # Title area (top)
-    ax_title = fig.add_axes([0.05, 0.85, 0.9, 0.12], facecolor='black')
+    ax_title = fig.add_axes([0.05, 0.82, 0.9, 0.16], facecolor='black')
     ax_title.axis('off')
 
     # Main title
-    ax_title.text(0.5, 0.8, 'POV: Quantitative Finance Time Dynamics Model',
+    ax_title.text(0.5, 0.92, 'POV: Quantitative Finance Time Dynamics Model',
                   fontsize=18, color='white', ha='center', va='top',
                   fontweight='bold')
 
     # Main equation
-    ax_title.text(0.5, 0.45,
+    ax_title.text(0.5, 0.68,
                   r'$Z(x, y) = F(\beta, \alpha, \tau, \nabla\tau; x, y, t)$',
                   fontsize=22, color='white', ha='center', va='center')
 
-    # Temporal gradient definition
-    ax_title.text(0.5, 0.1,
-                  r'(4) Temporal gradient: $\nabla\tau \equiv \frac{\mathrm{sd}(|\Delta r_t|)}{\mathrm{mean}(|r_t|)}$, '
-                  r'$\quad \Delta r_t = r_{t+1} - r_t$',
-                  fontsize=14, color='#aaaaaa', ha='center', va='center')
+    # Three core parameter definitions
+    ax_title.text(0.5, 0.42,
+                  r'(1) Velocity: $\beta \equiv \frac{\mu}{\sigma}$'
+                  r'$\quad\quad$ (2) Jerk: $\alpha \equiv \frac{1}{n-2} \sum_{t=1}^{n-2} (r_{t+2} - 2r_{t+1} + r_t)$',
+                  fontsize=12, color='#aaaaaa', ha='center', va='center')
+
+    ax_title.text(0.5, 0.18,
+                  r'(3) Proper time: $\tau \equiv \frac{S_n}{\sigma\sqrt{n}}$, $S_n = \sum(r_t - \mu)$'
+                  r'$\quad\quad$ (4) Temporal gradient: $\nabla\tau \equiv \frac{\mathrm{sd}(|\Delta r_t|)}{\mathrm{mean}(|r_t|)}$',
+                  fontsize=12, color='#aaaaaa', ha='center', va='center')
 
     # 3D Surface (main area)
     ax_3d = fig.add_subplot(111, projection='3d', facecolor='black',
-                            position=[0.05, 0.15, 0.9, 0.68])
+                            position=[0.05, 0.08, 0.9, 0.72])
 
     # Generate surface
     generator = SurfaceGenerator()
