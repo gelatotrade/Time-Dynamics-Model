@@ -8,22 +8,36 @@ The Time Dynamics Model is defined by the master equation:
 
     Z(x, y) = F(β, α, τ, ∇τ; x, y, t)
 
+Core Parameters:
+----------------
+(1) Velocity (Drift) — β ≡ μ/σ
+    Where μ is mean return and σ is standard deviation.
+    This is a Sharpe-like ratio measuring risk-adjusted momentum.
+
+(2) Jerk (Second Difference Mean) — α ≡ (1/(n-2)) * Σ(r_{t+2} - 2r_{t+1} + r_t)
+    The second discrete derivative of returns.
+    Measures rate of change of momentum (acceleration curvature).
+    - α > 0: Accelerating upward momentum
+    - α < 0: Decelerating or reversing momentum
+
+(3) Proper Time Deviation — τ ≡ S_n / (σ√n)
+    Where S_n = Σ(r_t - μ) is cumulative deviation from mean.
+    Normalized measure of cumulative drift.
+    - |τ| > 2: Significant deviation (trending strongly)
+    - |τ| ≈ 0: Mean-reverting behavior
+
 Where:
 - Z(x, y): The dynamic surface manifold in (space_x, space_y) coordinates
-- β: Market regime parameter (volatility scaling)
-- α: Momentum decay coefficient
-- τ: Characteristic time scale
-- ∇τ: Temporal gradient (volatility-normalized momentum)
+- β: Velocity parameter (risk-adjusted drift)
+- α: Jerk parameter (momentum curvature)
+- τ: Proper time deviation (cumulative drift)
+- ∇τ: Temporal gradient (market roughness)
 - x, y: Spatial coordinates in the feature space
 - t: Time index
 
 Temporal Gradient (Look-Ahead Bias Free):
 -----------------------------------------
-The original formulation has look-ahead bias:
-
-    ∇τ ≡ sd(|Δr_t|) / mean(|r_t|),  where Δr_t = r_{t+1} - r_t  [BIASED]
-
-The corrected formulation uses only past information:
+The temporal gradient measures market "roughness":
 
     ∇τ_t ≡ sd_{[t-w:t]}(|Δr_s|) / mean_{[t-w:t]}(|r_s|),  where Δr_s = r_s - r_{s-1}  [UNBIASED]
 
@@ -44,22 +58,222 @@ class ModelParameters:
     """
     Model parameters with mathematical interpretation.
 
+    Time Dynamics Model Core Parameters:
+    =====================================
+
+    (1) Velocity (Drift) — β ≡ μ/σ
+        The Sharpe-like ratio measuring risk-adjusted drift.
+        High β indicates strong directional momentum relative to volatility.
+
+    (2) Jerk (Second Difference Mean) — α ≡ (1/(n-2)) * Σ(r_{t+2} - 2r_{t+1} + r_t)
+        The second discrete derivative of returns, measuring momentum curvature.
+        α > 0: Accelerating upward momentum
+        α < 0: Decelerating or reversing momentum
+
+    (3) Proper Time Deviation — τ ≡ S_n / (σ√n), where S_n = Σ(r_t - μ)
+        Normalized cumulative deviation from mean, scaled by volatility.
+        |τ| > 2: Significant deviation (trending strongly)
+        |τ| ≈ 0: Mean-reverting behavior
+
     Attributes:
-        beta: Market regime parameter (β) - controls volatility scaling
-              Derived from: β = σ_realized / σ_historical
-
-        alpha: Momentum decay coefficient (α) - exponential decay rate
-               Derived from: α = -ln(0.5) / τ_half where τ_half is half-life
-
-        tau: Characteristic time scale (τ) - mean reversion period
-             Derived from: τ = 1 / λ where λ is the Ornstein-Uhlenbeck rate
-
+        beta: Velocity (drift) parameter (β) - risk-adjusted momentum
+        alpha: Jerk parameter (α) - momentum curvature
+        tau: Proper time deviation (τ) - cumulative drift from mean
         window: Rolling window size for temporal calculations
     """
     beta: float = 1.0
-    alpha: float = 0.94
-    tau: float = 20.0
+    alpha: float = 0.0
+    tau: float = 0.0
     window: int = 252  # Trading days in a year
+
+
+class TimeDynamicsParameters:
+    """
+    Calculator for the three core Time Dynamics parameters: β, α, τ
+
+    Mathematical Definitions:
+    =========================
+
+    (1) Velocity (Drift) — β ≡ μ/σ
+        Where μ is mean return and σ is standard deviation.
+        This is a Sharpe-like ratio measuring risk-adjusted momentum.
+
+    (2) Jerk (Second Difference Mean) — α ≡ (1/(n-2)) * Σ(r_{t+2} - 2r_{t+1} + r_t)
+        The second discrete derivative of returns.
+        Measures rate of change of momentum (acceleration curvature).
+
+    (3) Proper Time Deviation — τ ≡ S_n / (σ√n)
+        Where S_n = Σ(r_t - μ) is cumulative deviation from mean.
+        Normalized measure of cumulative drift.
+    """
+
+    def __init__(self, window: int = 252):
+        """
+        Initialize the Time Dynamics parameter calculator.
+
+        Args:
+            window: Rolling window size for calculations
+        """
+        self.window = window
+
+    def compute_beta(self, returns: np.ndarray) -> float:
+        """
+        Compute velocity (drift) parameter β ≡ μ/σ
+
+        Args:
+            returns: Array of returns
+
+        Returns:
+            Beta value (Sharpe-like ratio)
+        """
+        valid_returns = returns[~np.isnan(returns)]
+        if len(valid_returns) < 2:
+            return np.nan
+
+        mu = np.mean(valid_returns)
+        sigma = np.std(valid_returns, ddof=1)
+
+        if sigma < 1e-10:
+            return np.nan
+
+        return mu / sigma
+
+    def compute_alpha(self, returns: np.ndarray) -> float:
+        """
+        Compute jerk (second difference mean) parameter α
+
+        α ≡ (1/(n-2)) * Σ(r_{t+2} - 2r_{t+1} + r_t)
+
+        This is the mean of the second discrete derivative of returns.
+
+        Args:
+            returns: Array of returns
+
+        Returns:
+            Alpha value (momentum curvature)
+        """
+        valid_returns = returns[~np.isnan(returns)]
+        n = len(valid_returns)
+
+        if n < 3:
+            return np.nan
+
+        # Compute second differences: r_{t+2} - 2r_{t+1} + r_t
+        second_diff = np.zeros(n - 2)
+        for t in range(n - 2):
+            second_diff[t] = valid_returns[t + 2] - 2 * valid_returns[t + 1] + valid_returns[t]
+
+        return np.mean(second_diff)
+
+    def compute_tau(self, returns: np.ndarray) -> float:
+        """
+        Compute proper time deviation parameter τ ≡ S_n / (σ√n)
+
+        Where S_n = Σ(r_t - μ) is the cumulative deviation from mean.
+
+        Args:
+            returns: Array of returns
+
+        Returns:
+            Tau value (normalized cumulative deviation)
+        """
+        valid_returns = returns[~np.isnan(returns)]
+        n = len(valid_returns)
+
+        if n < 2:
+            return np.nan
+
+        mu = np.mean(valid_returns)
+        sigma = np.std(valid_returns, ddof=1)
+
+        if sigma < 1e-10:
+            return np.nan
+
+        # S_n = Σ(r_t - μ)
+        S_n = np.sum(valid_returns - mu)
+
+        # τ = S_n / (σ√n)
+        tau = S_n / (sigma * np.sqrt(n))
+
+        return tau
+
+    def compute_rolling_beta(self, returns: np.ndarray) -> np.ndarray:
+        """
+        Compute rolling β over the specified window.
+
+        Args:
+            returns: Array of returns
+
+        Returns:
+            Array of rolling beta values
+        """
+        n = len(returns)
+        beta = np.full(n, np.nan)
+
+        for t in range(self.window, n):
+            window_returns = returns[t - self.window:t]
+            beta[t] = self.compute_beta(window_returns)
+
+        return beta
+
+    def compute_rolling_alpha(self, returns: np.ndarray) -> np.ndarray:
+        """
+        Compute rolling α over the specified window.
+
+        Args:
+            returns: Array of returns
+
+        Returns:
+            Array of rolling alpha values
+        """
+        n = len(returns)
+        alpha = np.full(n, np.nan)
+
+        for t in range(self.window, n):
+            window_returns = returns[t - self.window:t]
+            alpha[t] = self.compute_alpha(window_returns)
+
+        return alpha
+
+    def compute_rolling_tau(self, returns: np.ndarray) -> np.ndarray:
+        """
+        Compute rolling τ over the specified window.
+
+        Args:
+            returns: Array of returns
+
+        Returns:
+            Array of rolling tau values
+        """
+        n = len(returns)
+        tau = np.full(n, np.nan)
+
+        for t in range(self.window, n):
+            window_returns = returns[t - self.window:t]
+            tau[t] = self.compute_tau(window_returns)
+
+        return tau
+
+    def compute_all_parameters(self, returns: np.ndarray) -> ModelParameters:
+        """
+        Compute all three parameters from a returns array.
+
+        Args:
+            returns: Array of returns
+
+        Returns:
+            ModelParameters with computed β, α, τ values
+        """
+        beta = self.compute_beta(returns)
+        alpha = self.compute_alpha(returns)
+        tau = self.compute_tau(returns)
+
+        return ModelParameters(
+            beta=beta if not np.isnan(beta) else 1.0,
+            alpha=alpha if not np.isnan(alpha) else 0.0,
+            tau=tau if not np.isnan(tau) else 0.0,
+            window=self.window
+        )
 
 
 class TemporalGradient:

@@ -113,12 +113,47 @@ Where:
 | Symbol | Description | Financial Interpretation |
 |--------|-------------|-------------------------|
 | $Z(x, y)$ | Surface height | Trading signal strength |
-| $\beta$ | Amplitude parameter | Market regime intensity |
-| $\alpha$ | Decay coefficient | Momentum persistence |
-| $\tau$ | Characteristic time | Trading frequency |
+| $\beta$ | Velocity (drift) | Risk-adjusted momentum |
+| $\alpha$ | Jerk (acceleration change) | Momentum curvature |
+| $\tau$ | Proper time deviation | Cumulative drift from mean |
 | $\nabla\tau$ | Temporal gradient | Market roughness |
 | $(x, y)$ | Feature coordinates | Technical indicators |
 | $t$ | Time index | Observation period |
+
+### Core Parameter Definitions
+
+The three fundamental parameters of the Time Dynamics Model are derived from returns analysis:
+
+#### (1) Velocity (Drift) — β
+
+$$\boxed{\beta \equiv \frac{\mu}{\sigma}}$$
+
+Where:
+- $\mu$: Mean return over the lookback window
+- $\sigma$: Standard deviation of returns
+
+**Interpretation:** The Sharpe-like ratio measuring risk-adjusted drift. High $\beta$ indicates strong directional momentum relative to volatility.
+
+#### (2) Jerk (Second Difference Mean) — α
+
+$$\boxed{\alpha \equiv \frac{1}{n-2} \sum_{t=1}^{n-2} \left( r_{t+2} - 2r_{t+1} + r_t \right)}$$
+
+**Interpretation:** The second discrete derivative of returns, measuring the rate of change of momentum (acceleration). This captures momentum curvature:
+- $\alpha > 0$: Accelerating upward momentum
+- $\alpha < 0$: Decelerating or reversing momentum
+- $\alpha \approx 0$: Constant momentum
+
+#### (3) Proper Time Deviation — τ
+
+$$\boxed{\tau \equiv \frac{S_n}{\sigma \sqrt{n}}}$$
+
+Where:
+$$S_n = \sum_{t=1}^{n} \left( r_t - \mu \right)$$
+
+**Interpretation:** A normalized measure of cumulative deviation from the mean, scaled by volatility and sample size. This captures how far the cumulative returns have drifted from expected behavior:
+- $|\tau| > 2$: Significant deviation (trending strongly)
+- $|\tau| \approx 0$: Mean-reverting behavior
+- Sign of $\tau$ indicates direction of cumulative drift
 
 ### The Temporal Gradient
 
