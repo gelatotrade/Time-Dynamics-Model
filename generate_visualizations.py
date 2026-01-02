@@ -142,25 +142,31 @@ def create_readme_visualization():
     fig = plt.figure(figsize=(16, 12), facecolor='black')
 
     # Top section: Title and formula
-    ax_title = fig.add_axes([0.05, 0.75, 0.9, 0.22], facecolor='black')
+    ax_title = fig.add_axes([0.05, 0.72, 0.9, 0.26], facecolor='black')
     ax_title.axis('off')
 
-    ax_title.text(0.5, 0.85, 'POV: Quantitative Finance Time Dynamics Model',
+    ax_title.text(0.5, 0.92, 'POV: Quantitative Finance Time Dynamics Model',
                   fontsize=22, color='white', ha='center', va='top',
                   fontweight='bold')
 
-    ax_title.text(0.5, 0.55,
+    ax_title.text(0.5, 0.72,
                   r'$Z(x, y) = F(\beta, \alpha, \tau, \nabla\tau; x, y, t)$',
                   fontsize=26, color='white', ha='center', va='center')
 
-    ax_title.text(0.5, 0.2,
-                  r'(4) Temporal gradient: $\nabla\tau \equiv \frac{\mathrm{sd}(|\Delta r_t|)}{\mathrm{mean}(|r_t|)}$, '
-                  r'$\quad \Delta r_t = r_{t+1} - r_t$',
-                  fontsize=16, color='#aaaaaa', ha='center', va='center')
+    # All 4 formulas
+    ax_title.text(0.5, 0.45,
+                  r'(1) Velocity: $\beta \equiv \frac{\mu}{\sigma}$'
+                  r'$\quad\quad$ (2) Jerk: $\alpha \equiv \frac{1}{n-2} \sum_{t=1}^{n-2} (r_{t+2} - 2r_{t+1} + r_t)$',
+                  fontsize=13, color='#aaaaaa', ha='center', va='center')
+
+    ax_title.text(0.5, 0.22,
+                  r'(3) Proper time: $\tau \equiv \frac{S_n}{\sigma\sqrt{n}}$, $S_n = \sum(r_t - \mu)$'
+                  r'$\quad\quad$ (4) Temporal gradient: $\nabla\tau \equiv \frac{\mathrm{sd}(|\Delta r_t|)}{\mathrm{mean}(|r_t|)}$',
+                  fontsize=13, color='#aaaaaa', ha='center', va='center')
 
     # Middle section: 3D surface
     ax_3d = fig.add_subplot(211, projection='3d', facecolor='black',
-                            position=[0.05, 0.30, 0.9, 0.45])
+                            position=[0.05, 0.28, 0.9, 0.42])
 
     generator = SurfaceGenerator()
     x = np.linspace(-3, 3, 100)
